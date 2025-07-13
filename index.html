@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Taxi: Расширенная версия</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            keyframes: {
+              'toast-in': {
+                '0%': { transform: 'translateY(100%) scale(0.9)', opacity: '0' },
+                '100%': { transform: 'translateY(0) scale(1)', opacity: '1' },
+              },
+              'toast-out': {
+                '0%': { transform: 'translateY(0) scale(1)', opacity: '1' },
+                '100%': { transform: 'translateY(100%) scale(0.9)', opacity: '0' },
+              },
+              'pulse-ring': {
+                '0%': { transform: 'scale(0.8)', opacity: '1' },
+                '70%': { transform: 'scale(2.5)', opacity: '0' },
+                '100%': { opacity: '0' },
+              }
+            },
+            animation: {
+              'toast-in': 'toast-in 0.5s ease-out forwards',
+              'toast-out': 'toast-out 0.5s ease-in forwards',
+              'pulse-ring': 'pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite',
+            }
+          }
+        }
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "./App": "./App.tsx",
+    "./types": "./types.ts",
+    "./views/ClientView": "./views/ClientView.tsx",
+    "./views/DriverView": "./views/DriverView.tsx",
+    "./views/AdminView": "./views/AdminView.tsx",
+    "./views/AuthView": "./views/AuthView.tsx",
+    "./contexts/AppContext": "./contexts/AppContext.tsx",
+    "./utils/helpers": "./utils/helpers.ts",
+    "./services/api": "./services/api.ts",
+    "./components/Header": "./components/Header.tsx",
+    "./components/MapPlaceholder": "./components/MapPlaceholder.tsx",
+    "./components/BookingPanel": "./components/BookingPanel.tsx",
+    "./components/ChatModal": "./components/ChatModal.tsx",
+    "./components/modals/ScheduleModal": "./components/modals/ScheduleModal.tsx",
+    "./components/modals/CancelRideModal": "./components/modals/CancelRideModal.tsx",
+    "./components/modals/RatingModal": "./components/modals/RatingModal.tsx",
+    "./components/modals/ProfileModal": "./components/modals/ProfileModal.tsx",
+    "./components/modals/RideHistoryModal": "./components/modals/RideHistoryModal.tsx",
+    "./components/modals/HelpModal": "./components/modals/HelpModal.tsx",
+    "./components/modals/AddCardModal": "./components/modals/AddCardModal.tsx",
+    "./components/modals/DriverProfileModal": "./components/modals/DriverProfileModal.tsx",
+    "./components/modals/DriverRideHistoryModal": "./components/modals/DriverRideHistoryModal.tsx",
+    "./components/Toast": "./components/Toast.tsx",
+    "./components/DarkModeToggle": "./components/DarkModeToggle.tsx",
+    "./components/PaymentSelector": "./components/PaymentSelector.tsx",
+    "./components/driver/DriverDashboard": "./components/driver/DriverDashboard.tsx",
+    "./components/driver/RideRequestCard": "./components/driver/RideRequestCard.tsx",
+    "./components/driver/DriverHeader": "./components/driver/DriverHeader.tsx",
+    "./components/driver/ClientInfoCard": "./components/driver/ClientInfoCard.tsx",
+    "./components/admin/AdminDashboard": "./components/admin/AdminDashboard.tsx",
+    "./components/admin/AdminMap": "./components/admin/AdminMap.tsx",
+    "./components/admin/StatCard": "./components/admin/StatCard.tsx",
+    "./components/Spinner": "./components/Spinner.tsx",
+    "./components/LoadingOverlay": "./components/LoadingOverlay.tsx",
+    "./components/icons/MenuIcon": "./components/icons/MenuIcon.tsx",
+    "./components/icons/UserIcon": "./components/icons/UserIcon.tsx",
+    "./components/icons/WalletIcon": "./components/icons/WalletIcon.tsx",
+    "./components/icons/HelpIcon": "./components/icons/HelpIcon.tsx",
+    "./components/icons/LocationPinIcon": "./components/icons/LocationPinIcon.tsx",
+    "./components/icons/DriverCarIcon": "./components/icons/DriverCarIcon.tsx",
+    "./components/icons/DollarSignIcon": "./components/icons/DollarSignIcon.tsx",
+    "./components/icons/CarIcon": "./components/icons/CarIcon.tsx",
+    "./components/icons/PlusIcon": "./components/icons/PlusIcon.tsx",
+    "./components/icons/MinusIcon": "./components/icons/MinusIcon.tsx",
+    "./components/icons/HomeIcon": "./components/icons/HomeIcon.tsx",
+    "./components/icons/BriefcaseIcon": "./components/icons/BriefcaseIcon.tsx",
+    "./components/icons/ClockIcon": "./components/icons/ClockIcon.tsx",
+    "./components/icons/MicrophoneIcon": "./components/icons/MicrophoneIcon.tsx",
+    "./components/icons/WheelchairIcon": "./components/icons/WheelchairIcon.tsx",
+    "./components/icons/TagIcon": "./components/icons/TagIcon.tsx",
+    "./components/icons/ShareIcon": "./components/icons/ShareIcon.tsx",
+    "./components/icons/ShieldIcon": "./components/icons/ShieldIcon.tsx",
+    "./components/icons/ChatIcon": "./components/icons/ChatIcon.tsx",
+    "./components/icons/PhoneIcon": "./components/icons/PhoneIcon.tsx",
+    "./components/icons/XIcon": "./components/icons/XIcon.tsx",
+    "./components/icons/SunIcon": "./components/icons/SunIcon.tsx",
+    "./components/icons/MoonIcon": "./components/icons/MoonIcon.tsx",
+    "./components/icons/CreditCardIcon": "./components/icons/CreditCardIcon.tsx",
+    "./components/icons/CashIcon": "./components/icons/CashIcon.tsx",
+    "./components/icons/StarIcon": "./components/icons/StarIcon.tsx",
+    "./components/icons/HistoryIcon": "./components/icons/HistoryIcon.tsx",
+    "./components/icons/PowerIcon": "./components/icons/PowerIcon.tsx",
+    "./components/icons/MastercardIcon": "./components/icons/MastercardIcon.tsx",
+    "./components/icons/DoorOpenIcon": "./components/icons/DoorOpenIcon.tsx"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-50 dark:bg-gray-900">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
