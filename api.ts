@@ -2,158 +2,377 @@
 import { 
     UserMode, UserProfile, Driver, DriverState, RideHistoryEntry, 
     PaymentCard, ActiveTrip, ChatMessage, RideType
-} from '../types';
-import { getDistance } from '../utils/helpers';
+} from './types';
 
-// --- MOCK DATABASE ---
-let mockDrivers: Driver[] = [
-    { id: 'd1', name: 'Алексей', rating: 4.9, photoUrl: 'https://i.pravatar.cc/150?u=driver42', carModel: 'Toyota Camry', licensePlate: 'А123ВС777', state: DriverState.ONLINE, location: { lat: 55.76, lng: 37.64 }, earningsToday: 4200, pastTrips: [] },
-    { id: 'd2', name: 'Сергей', rating: 4.8, photoUrl: 'https://i.pravatar.cc/150?u=driver16', carModel: 'Hyundai Solaris', licensePlate: 'В456УЕ777', state: DriverState.OFFLINE, location: { lat: 55.75, lng: 37.61 }, earningsToday: 0, pastTrips: [] },
-    { id: 'd3', name: 'Дмитрий', rating: 5.0, photoUrl: 'https://i.pravatar.cc/150?u=driver8', carModel: 'Kia Rio', licensePlate: 'Е789КХ777', state: DriverState.ONLINE, location: { lat: 55.74, lng: 37.62 }, earningsToday: 3500, pastTrips: [] },
-];
+// Настройки API
+const API_BASE_URL = 'http://localhost:3001/api';
+const WS_URL = 'ws://localhost:3001';
 
-let mockClientProfile: UserProfile = {
-  name: 'Иван Петров',
-  phone: '+7 (999) 123-45-67',
-  email: 'ivan.petrov@email.com',
-  walletBalance: 1250,
-  photoUrl: 'https://i.pravatar.cc/150?u=user1',
-  paymentMethods: [{ id: 'card1', last4: '4242', brand: 'mastercard' }],
-  location: { lat: 55.755, lng: 37.617 }
-};
+// Утилита для HTTP запросов
+class ApiClient {
+    private baseURL: string;
+    private token: string | null = null;
 
-let mockRideHistory: RideHistoryEntry[] = [];
-let mockActiveRides: (ActiveTrip & { status: DriverState | 'cancelled' })[] = [];
+    constructor(baseURL: string) {
+        this.baseURL = baseURL;
+        this.token = localStorage.getItem('authToken');
+    }
 
-// --- API Service Simulation ---
-const simulateRequest = <T>(data: T, delay: number = 500): Promise<T> => {
-    return new Promise(resolve => setTimeout(() => resolve(data), delay));
+    private async request<T>(
+        endpoint: string, 
+        options: RequestInit = {}
+    ): Promise<{ success: boolean; data?: T; error?: any }> {
+        const url = `${this.baseURL}${endpoint}`;
+        
+        const headers: any = {
+            'Content-Type': 'application/json',
+            ...options.headers,
+        };
+
+        if (this.token) {
+            headers['Authorization'] = `Bearer ${this.token}`;
+        }
+
+        try {
+            const response = await fetch(url, {
+                ...options,
+                headers,
+            });
+
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error?.message || 'Network error');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('API Error:', error);
+            return {
+                success: false,
+                error: {
+                    message: error instanceof Error ? error.message : 'Unknown error',
+                    code: 'NETWORK_ERROR'
+                }
+            };
+        }
+    }
+
+    setToken(token: string) {
+        this.token = token;
+        localStorage.setItem('authToken', token);
+    }
+
+    clearToken() {
+        this.token = null;
+        localStorage.removeItem('authToken');
+    }
+
+    get currentToken() {
+        return this.token;
+    }
+
+    // GET запрос
+    async get<T>(endpoint: string): Promise<{ success: boolean; data?: T; error?: any }> {
+        return this.request<T>(endpoint, { method: 'GET' });
+    }
+
+    // POST запрос
+    async post<T>(endpoint: string, data?: any): Promise<{ success: boolean; data?: T; error?: any }> {
+        return this.request<T>(endpoint, {
+            method: 'POST',
+            body: data ? JSON.stringify(data) : undefined,
+        });
+    }
+
+    // PATCH запрос
+    async patch<T>(endpoint: string, data?: any): Promise<{ success: boolean; data?: T; error?: any }> {
+        return this.request<T>(endpoint, {
+            method: 'PATCH',
+            body: data ? JSON.stringify(data) : undefined,
+        });
+    }
 }
 
+const apiClient = new ApiClient(API_BASE_URL);
+
+// WebSocket соединение
+let socket: WebSocket | null = null;
+
+const connectWebSocket = (token: string) => {
+    if (socket) {
+        socket.close();
+    }
+    
+    socket = new WebSocket(`${WS_URL}?token=${token}`);
+    
+    socket.onopen = () => {
+        console.log('WebSocket connected');
+    };
+    
+    socket.onclose = () => {
+        console.log('WebSocket disconnected');
+        // Переподключение через 3 секунды
+        setTimeout(() => {
+            if (apiClient.currentToken) {
+                connectWebSocket(apiClient.currentToken);
+            }
+        }, 3000);
+    };
+    
+    socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+    
+    return socket;
+};
+
 export const apiService = {
-    async login(mode: UserMode): Promise<UserProfile> {
-        // In a real app, this would hit /api/login and return user data
-        return simulateRequest(mockClientProfile, 1000);
+    // Аутентификация
+    async login(mode: UserMode, phone: string = '', password: string = ''): Promise<UserProfile> {
+        // Если передали параметры, используем их для реального входа
+        if (phone && password) {
+            const result = await apiClient.post('/auth/login', {
+                phone,
+                password,
+                userMode: mode
+            });
+
+            if (result.success && result.data?.token) {
+                apiClient.setToken(result.data.token);
+                connectWebSocket(result.data.token);
+                return result.data.profile;
+            } else {
+                throw new Error(result.error?.message || 'Login failed');
+            }
+        }
+
+        // Для обратной совместимости со старым кодом
+        // Используем тестовые данные для демо
+        const testUsers = {
+            CLIENT: { phone: '+79991234568', password: '123456' },
+            DRIVER: { phone: '+79991234569', password: '123456' },
+            ADMIN: { phone: '+79991234567', password: '123456' }
+        };
+
+        const testUser = testUsers[mode];
+        return this.login(mode, testUser.phone, testUser.password);
     },
 
+    // Регистрация
+    async register(userData: {
+        name: string;
+        phone: string;
+        email: string;
+        password: string;
+        userMode: UserMode;
+    }): Promise<UserProfile> {
+        const result = await apiClient.post('/auth/register', userData);
+
+        if (result.success && result.data?.token) {
+            apiClient.setToken(result.data.token);
+            connectWebSocket(result.data.token);
+            return result.data.profile;
+        } else {
+            throw new Error(result.error?.message || 'Registration failed');
+        }
+    },
+
+    // Получение информации о пользователе
+    async getCurrentUser(): Promise<{ user: any; profile: UserProfile }> {
+        const result = await apiClient.get<{ user: any; profile: UserProfile }>('/auth/me');
+        
+        if (result.success && result.data) {
+            return result.data;
+        } else {
+            throw new Error(result.error?.message || 'Failed to get user info');
+        }
+    },
+
+    // Водители
     async fetchDrivers(): Promise<Driver[]> {
-        return simulateRequest([...mockDrivers]);
+        // Для демо возвращаем тестовых водителей
+        // В реальном приложении здесь был бы endpoint для получения доступных водителей
+        return [
+            { 
+                id: 'd1', 
+                name: 'Алексей', 
+                rating: 4.9, 
+                photoUrl: 'https://i.pravatar.cc/150?u=driver42', 
+                carModel: 'Toyota Camry', 
+                licensePlate: 'А123ВС777', 
+                state: DriverState.ONLINE, 
+                location: { lat: 55.76, lng: 37.64 }, 
+                earningsToday: 4200, 
+                pastTrips: [] 
+            },
+        ];
     },
 
+    // История поездок
     async fetchRideHistory(): Promise<RideHistoryEntry[]> {
-        return simulateRequest([...mockRideHistory]);
+        const result = await apiClient.get<RideHistoryEntry[]>('/rides/history');
+        
+        if (result.success && result.data) {
+            return result.data;
+        } else {
+            return [];
+        }
     },
     
-    async createRide(details: { pickup: string, destination: string, fare: number, rideType: RideType, clientProfile: UserProfile }): Promise<ActiveTrip> {
-        const newRide: ActiveTrip & { status: DriverState } = {
-            id: `ride_${Date.now()}`,
-            clientId: 'user1',
-            driverId: null,
-            status: DriverState.ONLINE, // Initial status, means "searching"
-            ...details
+    // Создание поездки
+    async createRide(details: { 
+        pickup: string; 
+        destination: string; 
+        fare: number; 
+        rideType: RideType; 
+        clientProfile: UserProfile;
+        pickupCoords?: { lat: number; lng: number };
+        destinationCoords?: { lat: number; lng: number };
+    }): Promise<ActiveTrip> {
+        const rideData = {
+            pickup: details.pickup,
+            destination: details.destination,
+            pickupCoords: details.pickupCoords || { lat: 55.755, lng: 37.617 },
+            destinationCoords: details.destinationCoords || { lat: 55.751, lng: 37.618 },
+            rideType: details.rideType,
+            paymentMethod: 'CARD' // По умолчанию карта
         };
-        mockActiveRides.push(newRide);
-        return simulateRequest(newRide, 1000);
+
+        const result = await apiClient.post<any>('/rides', rideData);
+        
+        if (result.success && result.data) {
+            return {
+                id: result.data.id || 'temp-ride-id',
+                clientId: result.data.clientId || 'temp-client-id',
+                clientProfile: details.clientProfile,
+                driverId: result.data.driverId || null,
+                pickup: result.data.pickup || details.pickup,
+                destination: result.data.destination || details.destination,
+                fare: result.data.fare || details.fare,
+                rideType: result.data.rideType || details.rideType
+            };
+        } else {
+            throw new Error(result.error?.message || 'Failed to create ride');
+        }
     },
 
-    async getRideStatus(rideId: string, userMode: UserMode): Promise<{ status: string, driver: Driver | null }> {
-        const ride = mockActiveRides.find(r => r.id === rideId);
-        if (!ride) throw new Error("Ride not found");
-
-        // If a driver is already assigned, return it.
-        if (ride.driverId) {
-            const driver = mockDrivers.find(d => d.id === ride.driverId);
-            return simulateRequest({ status: ride.status, driver: driver || null });
-        }
-
-        // --- Find Driver Logic ---
-        let driverToAssign: Driver | undefined;
+    // Получение активной поездки
+    async getActiveRide(): Promise<ActiveTrip | null> {
+        const result = await apiClient.get('/rides/active');
         
-        // Simulation override for predictable testing in Admin/Driver views
-        if (userMode === UserMode.ADMIN || userMode === UserMode.DRIVER) {
-             const d1 = mockDrivers.find(d => d.id === 'd1');
-             if (d1?.state === DriverState.ONLINE) {
-                 driverToAssign = d1;
-             }
+        if (result.success) {
+            return result.data || null;
+        } else {
+            throw new Error(result.error?.message || 'Failed to get active ride');
         }
-        
-        // Default logic if override doesn't apply
-        if (!driverToAssign) {
-            const availableDrivers = mockDrivers.filter(d => d.state === DriverState.ONLINE);
-            if (availableDrivers.length > 0) {
-                let closestDriver = availableDrivers[0];
-                let minDistance = getDistance(ride.clientProfile.location.lat, ride.clientProfile.location.lng, closestDriver.location.lat, closestDriver.location.lng);
-                for (let i = 1; i < availableDrivers.length; i++) {
-                    const driver = availableDrivers[i];
-                    const distance = getDistance(ride.clientProfile.location.lat, ride.clientProfile.location.lng, driver.location.lat, driver.location.lng);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestDriver = driver;
-                    }
-                }
-                driverToAssign = closestDriver;
-            }
-        }
-        
-        if (driverToAssign) {
-            // Assign driver to ride
-            ride.driverId = driverToAssign.id;
-            ride.status = DriverState.TO_PICKUP;
-            // Update driver's state
-            mockDrivers = mockDrivers.map(d => d.id === driverToAssign!.id ? { ...d, state: DriverState.TO_PICKUP } : d);
-            return simulateRequest({ status: ride.status, driver: driverToAssign });
-        }
-        
-        return simulateRequest({ status: 'searching', driver: null });
     },
 
-    async cancelRide(rideId: string): Promise<{ success: boolean }> {
-        mockActiveRides = mockActiveRides.filter(r => r.id !== rideId);
-        mockDrivers = mockDrivers.map(d => (d.state === DriverState.INCOMING_RIDE || d.state === DriverState.TO_PICKUP) ? {...d, state: DriverState.ONLINE } : d);
-        return simulateRequest({ success: true });
+    // Принятие поездки водителем
+    async acceptRide(rideId: string): Promise<{ success: boolean }> {
+        const result = await apiClient.post(`/rides/${rideId}/accept`);
+        return { success: result.success };
     },
-    
+
+    // Отмена поездки
+    async cancelRide(rideId: string, reason?: string): Promise<{ success: boolean }> {
+        const result = await apiClient.patch(`/rides/${rideId}/cancel`, { reason });
+        return { success: result.success };
+    },
+
+    // Обновление статуса поездки
     async updateRideStatus(rideId: string, newStatus: 'TRIP_IN_PROGRESS' | 'TRIP_COMPLETE'): Promise<{ success: boolean }> {
-        const ride = mockActiveRides.find(r => r.id === rideId);
-        if (ride) {
-            mockDrivers = mockDrivers.map(d => d.id === ride.driverId ? { ...d, state: DriverState[newStatus] } : d);
-            if (newStatus === 'TRIP_COMPLETE') {
-                 mockActiveRides = mockActiveRides.filter(r => r.id !== rideId);
+        const statusMap = {
+            'TRIP_IN_PROGRESS': 'IN_PROGRESS',
+            'TRIP_COMPLETE': 'COMPLETED'
+        };
+
+        const result = await apiClient.patch(`/rides/${rideId}/status`, { 
+            status: statusMap[newStatus] 
+        });
+        return { success: result.success };
+    },
+
+    // Отправка сообщения в чат
+    async sendMessage(text: string, sender: 'user' | 'driver'): Promise<ChatMessage> {
+        // Отправляем через WebSocket
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            const activeRide = await this.getActiveRide();
+            if (activeRide) {
+                socket.send(JSON.stringify({
+                    type: 'send_message',
+                    data: {
+                        rideId: activeRide.id,
+                        message: text
+                    }
+                }));
             }
         }
-        return simulateRequest({ success: true });
-    },
 
-    async updateDriverEarnings(driverId: string, fare: number): Promise<{ earningsToday: number }> {
-        let earnings = 0;
-        mockDrivers = mockDrivers.map(d => {
-            if (d.id === driverId) {
-                earnings = d.earningsToday + fare;
-                return { ...d, earningsToday: earnings, state: DriverState.ONLINE };
-            }
-            return d;
-        });
-        return simulateRequest({ earningsToday: earnings });
-    },
-
-    async sendMessage(text: string, sender: 'user' | 'driver'): Promise<ChatMessage> {
-        const newMessage: ChatMessage = { 
-            id: Date.now(), 
-            sender, 
-            text, 
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+        // Возвращаем сообщение для локального отображения
+        return {
+            id: Date.now(),
+            sender,
+            text,
+            timestamp: new Date().toISOString()
         };
-        return simulateRequest(newMessage, 200);
     },
 
+    // Обновление профиля
     async updateProfile(profile: UserProfile): Promise<UserProfile> {
-        mockClientProfile = profile;
-        return simulateRequest(mockClientProfile, 800);
+        // Пока заглушка - в реальном API здесь был бы PATCH /profile
+        return profile;
     },
 
+    // Добавление карты
     async addPaymentCard(profile: UserProfile, card: PaymentCard): Promise<UserProfile> {
-        const newProfile = { ...profile, paymentMethods: [...profile.paymentMethods, card]};
-        mockClientProfile = newProfile;
-        return simulateRequest(newProfile, 600);
+        // Пока заглушка - в реальном API здесь был бы POST /cards
+        return {
+            ...profile,
+            paymentMethods: [...profile.paymentMethods, card]
+        };
+    },
+
+    // WebSocket подписки
+    onMessage(callback: (message: any) => void) {
+        if (socket) {
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    callback(data);
+                } catch (error) {
+                    console.error('Failed to parse WebSocket message:', error);
+                }
+            };
+        }
+    },
+
+    // Обновление геолокации
+    updateLocation(lat: number, lng: number) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'update_location',
+                data: { lat, lng }
+            }));
+        }
+    },
+
+    // Изменение статуса водителя
+    updateDriverStatus(status: DriverState) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'driver_status_change',
+                data: { status }
+            }));
+        }
+    },
+
+    // Отключение
+    disconnect() {
+        if (socket) {
+            socket.close();
+            socket = null;
+        }
+        apiClient.clearToken();
     }
 };
